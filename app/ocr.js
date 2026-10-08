@@ -24,8 +24,10 @@ async function visionBinary() {
   try {
     await run('swiftc', ['-O', SWIFT_SRC, '-o', SWIFT_BIN], { timeout: 300_000 });
     return SWIFT_BIN;
-  } catch {
-    return null;
+  } catch (err) {
+    // Don't quietly fall back to tesseract: it is Latin-only and gives much worse results.
+    const detail = String(err.stderr || err.message).trim().slice(0, 1200);
+    throw new Error(`Could not build the Apple Vision helper. Try "xcode-select --install". Details: ${detail}`);
   }
 }
 

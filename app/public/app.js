@@ -98,7 +98,10 @@ function openDetail(item) {
   $('detail').showModal();
 }
 
+const ENGINES = { vision: 'Apple Vision', tesseract: 'Tesseract' };
+
 function showText(item) {
+  $('detail-engine').textContent = item.ocr_status === 'done' ? `· read with ${ENGINES[item.ocr_engine] || item.ocr_engine || 'unknown engine'}` : '';
   $('detail-text').textContent =
     item.ocr_status === 'failed' ? `OCR failed: ${item.ocr_error}`
     : item.ocr_status === 'done' ? (item.extracted_text || '(no text found)')
