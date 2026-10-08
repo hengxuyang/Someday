@@ -22,6 +22,10 @@ Vision reads English plus Simplified/Traditional Chinese, Japanese and Korean by
 languages set `SOMEDAY_OCR_LANGS` (e.g. `SOMEDAY_OCR_LANGS=en-US,th-TH npm start`). After changing OCR
 settings, use **Re-run OCR** on affected items. User edits are kept.
 
+To see what OCR produces for one image (and which engine ran): `npm run ocr -- path/to/image.png`.
+The detail view also shows "read with Apple Vision" or "read with Tesseract". Tesseract is Latin-only
+and much worse on mixed-language screenshots; if you see it on a Mac, Vision failed to build.
+
 ## Status
 
 Phase 1: import (button, multi-select, drag and drop), copy, display, duplicate detection, delete.
