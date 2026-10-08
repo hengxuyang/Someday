@@ -90,6 +90,17 @@ export class Store {
     });
   }
 
+  update(id, patch) {
+    return this.#locked(async () => {
+      const items = await this.#read();
+      const item = items.find((i) => i.id === id);
+      if (!item) return null;
+      Object.assign(item, patch, { updated_at: new Date().toISOString() });
+      await this.#write(items);
+      return item;
+    });
+  }
+
   // Deletes only the Someday copy; the user's original is never touched.
   remove(id) {
     return this.#locked(async () => {

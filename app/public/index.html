@@ -13,15 +13,19 @@
     <button id="add" type="button">+ Add Screenshots</button>
     <input id="file" type="file" accept="image/*" multiple hidden>
     <p id="status" role="status"></p>
+    <input id="q" type="search" placeholder="Search text, names, places…" autocomplete="off">
   </header>
   <main>
-    <p id="empty" hidden>Nothing here yet. Drop some screenshots anywhere to begin.</p>
+    <p id="empty" hidden>Nothing here yet.</p>
     <div id="grid"></div>
   </main>
   <div id="drop" hidden>Drop screenshots to add them</div>
   <dialog id="detail">
     <img id="detail-img" alt="">
     <p id="detail-meta"></p>
+    <h2>Text found in screenshot</h2>
+    <pre id="detail-text"></pre>
+    <button id="reocr" type="button">Re-run OCR</button>
     <form method="dialog">
       <button id="delete" type="button" class="danger">Delete from Someday</button>
       <button>Close</button>
