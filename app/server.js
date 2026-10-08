@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { Store } from './store.js';
 import { ocrImage } from './ocr.js';
 import { search } from './search.js';
+import { analyse, validateEdit, whyFor } from './extract.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -59,9 +60,17 @@ async function serveFile(res, dir, rel) {
 async function runOcr(store, item, ocr) {
   try {
     const { text, engine } = await ocr(path.join(store.root, item.image_path));
-    return store.update(item.id, { extracted_text: text, ocr_status: 'done', ocr_engine: engine, ocr_error: undefined });
+    const ocrFields = { extracted_text: text, ocr_status: 'done', ocr_engine: engine, ocr_error: undefined };
+    return store.update(item.id, { ...ocrFields, ...analyse({ ...item, ...ocrFields }) });
   } catch (err) {
     return store.update(item.id, { ocr_status: 'failed', ocr_error: err.message });
+  }
+}
+
+// Items imported before structured extraction existed get analysed on startup.
+export async function backfill(store) {
+  for (const item of await store.list()) {
+    if (item.ocr_status === 'done' && !item.type) await store.update(item.id, analyse(item));
   }
 }
 
@@ -71,7 +80,11 @@ export function createServer(store, { ocr = ocrImage } = {}) {
       const url = new URL(req.url, 'http://localhost');
       const p = url.pathname;
 
-      if (p === '/api/items' && req.method === 'GET') return json(res, 200, search(await store.list(), url.searchParams.get('q')));
+      if (p === '/api/items' && req.method === 'GET') {
+        const intent = url.searchParams.get('intent');
+        const items = search(await store.list(), url.searchParams.get('q'));
+        return json(res, 200, intent ? items.filter((i) => i.intent === intent) : items);
+      }
 
       if (p === '/api/items' && req.method === 'POST') {
         const name = decodeURIComponent(req.headers['x-filename'] || 'screenshot');
@@ -86,7 +99,27 @@ export function createServer(store, { ocr = ocrImage } = {}) {
         return item ? json(res, 200, { item: await runOcr(store, item, ocr) }) : json(res, 404, { error: 'Not found' });
       }
 
-      const del = p.match(/^\/api\/items\/([a-f0-9]+)$/);
+      const one = p.match(/^\/api\/items\/([a-f0-9]+)$/);
+
+      if (one && req.method === 'PATCH') {
+        const item = (await store.list()).find((i) => i.id === one[1]);
+        if (!item) return json(res, 404, { error: 'Not found' });
+        const edit = validateEdit(JSON.parse((await readBody(req)).toString() || '{}'));
+        const edited_fields = [...new Set([...(item.edited_fields || []), ...Object.keys(edit)])];
+        const patch = { ...edit, edited_fields };
+        // Changing the intent updates the "why saved" line unless the user wrote their own.
+        if (edit.intent && !edited_fields.includes('why_saved')) patch.why_saved = whyFor(edit.intent);
+        if (edited_fields.includes('type') || edited_fields.includes('intent')) patch.confidence = 1;
+        return json(res, 200, { item: await store.update(item.id, patch) });
+      }
+
+      const reprocess = p.match(/^\/api\/items\/([a-f0-9]+)\/reprocess$/);
+      if (reprocess && req.method === 'POST') {
+        const item = (await store.list()).find((i) => i.id === reprocess[1]);
+        return item ? json(res, 200, { item: await store.update(item.id, analyse(item)) }) : json(res, 404, { error: 'Not found' });
+      }
+
+      const del = one;
       if (del && req.method === 'DELETE') {
         return (await store.remove(del[1])) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'Not found' });
       }
@@ -96,7 +129,7 @@ export function createServer(store, { ocr = ocrImage } = {}) {
 
       json(res, 405, { error: 'Method not allowed' });
     } catch (err) {
-      json(res, err.status || 500, { error: err.message });
+      json(res, err.status || (err instanceof SyntaxError ? 400 : 500), { error: err.message });
     }
   });
 }
@@ -104,6 +137,7 @@ export function createServer(store, { ocr = ocrImage } = {}) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const store = new Store(root);
   await store.init();
+  await backfill(store);
   const port = Number(process.env.PORT) || 3000;
   // Bind to loopback only: this is a private, local app.
   createServer(store).listen(port, '127.0.0.1', () => console.log(`Someday running at http://localhost:${port}`));

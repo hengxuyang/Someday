@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Someday</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,6 +15,7 @@
     <input id="file" type="file" accept="image/*" multiple hidden>
     <p id="status" role="status"></p>
     <input id="q" type="search" placeholder="Search text, names, places…" autocomplete="off">
+    <nav id="chips" aria-label="Filter by intent"></nav>
   </header>
   <main>
     <p id="empty" hidden>Nothing here yet.</p>
@@ -23,6 +25,16 @@
   <dialog id="detail">
     <img id="detail-img" alt="">
     <p id="detail-meta"></p>
+    <form id="edit">
+      <label>Name <input name="name"></label>
+      <label>Location <input name="location"></label>
+      <label>Type <select name="type"></select></label>
+      <label>Saved to <select name="intent"></select></label>
+      <label>Why saved <input name="why_saved"></label>
+      <label>Useful details (one per line) <textarea name="useful_details" rows="4"></textarea></label>
+      <p id="confidence"></p>
+      <div class="row"><button type="submit">Save changes</button><button id="reprocess" type="button">Re-process</button></div>
+    </form>
     <h2>Text found in screenshot</h2>
     <pre id="detail-text"></pre>
     <button id="reocr" type="button">Re-run OCR</button>

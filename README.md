@@ -23,3 +23,7 @@ scan screenshots imported earlier).
 Phase 1: import (button, multi-select, drag and drop), copy, display, duplicate detection, delete.
 
 Phase 2: local OCR on import, stored text, search across OCR text and filename, Re-run OCR.
+
+Phase 3: rule-based understanding (`app/extract.js`) fills in type, intent, name, location, why saved,
+useful details and a confidence score. Everything is editable in the detail view; edited fields are kept
+when an item is re-processed. Filter by intent with the chips under the search box.
