@@ -3,6 +3,8 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store } from './store.js';
+import { ocrImage } from './ocr.js';
+import { search } from './search.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -53,18 +55,35 @@ async function serveFile(res, dir, rel) {
   }
 }
 
-export function createServer(store) {
+// OCR failure must never block an import: record it and let the user retry later.
+async function runOcr(store, item, ocr) {
+  try {
+    const { text, engine } = await ocr(path.join(store.root, item.image_path));
+    return store.update(item.id, { extracted_text: text, ocr_status: 'done', ocr_engine: engine, ocr_error: undefined });
+  } catch (err) {
+    return store.update(item.id, { ocr_status: 'failed', ocr_error: err.message });
+  }
+}
+
+export function createServer(store, { ocr = ocrImage } = {}) {
   return http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
       const p = url.pathname;
 
-      if (p === '/api/items' && req.method === 'GET') return json(res, 200, await store.list());
+      if (p === '/api/items' && req.method === 'GET') return json(res, 200, search(await store.list(), url.searchParams.get('q')));
 
       if (p === '/api/items' && req.method === 'POST') {
         const name = decodeURIComponent(req.headers['x-filename'] || 'screenshot');
-        const { item, duplicate } = await store.add(await readBody(req), name);
-        return json(res, duplicate ? 200 : 201, { item, duplicate });
+        const added = await store.add(await readBody(req), name);
+        const item = added.duplicate ? added.item : await runOcr(store, added.item, ocr);
+        return json(res, added.duplicate ? 200 : 201, { item, duplicate: added.duplicate });
+      }
+
+      const redo = p.match(/^\/api\/items\/([a-f0-9]+)\/ocr$/);
+      if (redo && req.method === 'POST') {
+        const item = (await store.list()).find((i) => i.id === redo[1]);
+        return item ? json(res, 200, { item: await runOcr(store, item, ocr) }) : json(res, 404, { error: 'Not found' });
       }
 
       const del = p.match(/^\/api\/items\/([a-f0-9]+)$/);
