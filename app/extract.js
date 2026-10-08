@@ -27,7 +27,9 @@ const lines = (text) => text.split(/\r?\n/).map((l) => l.replace(/^[*•·▪●
 const count = (re, text) => (text.match(re) || []).length;
 
 export function classify(text) {
-  const scores = Object.fromEntries(Object.entries(KEYWORDS).map(([t, re]) => [t, count(re, text)]));
+  // Venue names inside street addresses ("Hotel Classic by Venue") say nothing about the topic.
+  const body = withoutAddresses(text);
+  const scores = Object.fromEntries(Object.entries(KEYWORDS).map(([t, re]) => [t, count(re, body)]));
   const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   const [best, top] = ranked[0];
   const second = ranked[1][1];
@@ -91,14 +93,42 @@ const HOURS = /\bopen\b|24\s?\/\s?7|\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\s?[-–]/i;
 const VENUE = /\b([A-Z][\w']+(?:[ \t]+[A-Z][\w']+){0,3}[ \t](?:Towers?|Plaza|Mall|Centre|Center|Building|Market|Square|Hotel|Station|Island|Park|Hawker Centre|Food Centre|Quay|Walk|Point|City))\b/;
 const PREPOSITION = /\b(?:in|at|near)[ \t]+([A-Z][\w']+(?:[ \t]+[A-Z][\w']+){0,2})\b/;
 
-// A street address often wraps onto a second line ("..., Hotel Classic by Venue,\nSingapore 427353").
+const POSTAL = /\b(?:Singapore|S)[ \t]?\d{6}\b/;
+
+// Single stray symbols ("đ", "|") are OCR noise from icons next to the text.
+const cleanAddress = (a) => a.split(/\s+/).filter((t) => t.length > 1 || /[A-Za-z0-9&]/.test(t)).join(' ').replace(/,\s*$/, '');
+
+// Every address in the text as { from, to } line ranges. An address often wraps onto the next line
+// ("..., Hotel Classic by Venue,\nSingapore 427353").
+function addressSpans(all) {
+  const spans = [];
+  for (let i = 0; i < all.length; i++) {
+    const line = all[i];
+    if (!ADDRESS_LINE.test(line)) continue;
+    const next = all[i + 1];
+    const continues = next && next.length < 60 && (/[,&-]$/.test(line) || (!POSTAL.test(line) && POSTAL.test(next)));
+    spans.push({ from: i, to: continues ? i + 1 : i });
+    if (continues) i++; // the wrapped line belongs to this address, not a new one
+  }
+  return spans;
+}
+
+function withoutAddresses(text) {
+  const all = lines(text);
+  const drop = new Set(addressSpans(all).flatMap(({ from, to }) => (to > from ? [from, to] : [from])));
+  return all.filter((_, i) => !drop.has(i)).join('\n');
+}
+
+// The best address: prefer one with a postal code, then fewer noise symbols; later copies win ties.
 function addressFrom(text) {
   const all = lines(text);
-  const i = all.findIndex((l) => ADDRESS_LINE.test(l));
-  if (i < 0) return '';
-  let addr = all[i];
-  if (/[,&-]$/.test(addr) && all[i + 1] && all[i + 1].length < 60) addr += ` ${all[i + 1]}`;
-  return addr.replace(/,\s*$/, '');
+  const candidates = addressSpans(all).map(({ from, to }) => {
+    const raw = all.slice(from, to + 1).join(' ');
+    const cleaned = cleanAddress(raw);
+    return { text: cleaned, score: (POSTAL.test(cleaned) ? 2 : 0) - (raw.split(/\s+/).length - cleaned.split(/\s+/).length) };
+  });
+  const best = candidates.reduce((a, b) => (!a || b.score >= a.score ? b : a), null);
+  return best ? best.text : '';
 }
 
 export function guessLocation(text, name = '', type = 'other') {
@@ -125,20 +155,28 @@ const DETAIL_PATTERNS = [
   /\bbest (?:season|time)\b|\bentry\b|\badmission\b|\breservation/i,
 ];
 
+// Dice coefficient on character pairs: ~1 for strings that differ by an OCR slip or two.
+function similarity(a, b) {
+  const pairs = (s) => { const x = squash(s); return Array.from({ length: Math.max(x.length - 1, 0) }, (_, i) => x.slice(i, i + 2)); };
+  const [pa, pb] = [pairs(a), pairs(b)];
+  if (!pa.length || !pb.length) return a === b ? 1 : 0;
+  const pool = [...pb];
+  let hits = 0;
+  for (const p of pa) { const i = pool.indexOf(p); if (i >= 0) { hits++; pool.splice(i, 1); } }
+  return (2 * hits) / (pa.length + pb.length);
+}
+
 export function guessDetails(text, name = '', location = '') {
-  const seen = new Set();
   const out = [];
   for (const line of lines(text)) {
     if (line === name || line === location || line.length > 80) continue;
     if (!DETAIL_PATTERNS.some((re) => re.test(line))) continue;
-    const key = line.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      out.push(line);
-    }
-    if (out.length === 8) break;
+    // The same detail often appears twice (a map card and the caption), read slightly differently.
+    const dup = out.findIndex((d) => similarity(d, line) >= 0.8);
+    if (dup < 0) out.push(line);
+    else if (line.length > out[dup].length) out[dup] = line;
   }
-  return out;
+  return out.slice(0, 8);
 }
 
 export function extract(text) {
