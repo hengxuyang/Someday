@@ -90,3 +90,16 @@ test('address and hours alone suggest a place to visit, with low confidence', ()
   assert.ok(r.confidence < 0.5);
   assert.equal(r.location, '5 Orchard Road');
 });
+
+test('Apple Vision output of the same screenshot: food, full address, de-duplicated hours', () => {
+  const r = extract(readFileSync(new URL('./fixtures/instagram-steak-stop-vision.txt', import.meta.url), 'utf8'));
+  assert.equal(r.type, 'food'); // "Hotel" in the address must not make it a place
+  assert.equal(r.name, 'Steak Stop');
+  assert.equal(r.location, '12 Joo Chiat Rd, 01-03 Hotel Classic by Venue, Singapore 427353');
+  assert.equal(r.useful_details.length, 1);
+  assert.match(r.useful_details[0], /12pm-3pm/);
+});
+
+test('a lone postal code line is not mistaken for a second address', () => {
+  assert.equal(extract('Cafe Nine\n9 Bukit Pasoh Road,\nSingapore 089827\nOpen 8am-5pm').location, '9 Bukit Pasoh Road, Singapore 089827');
+});
