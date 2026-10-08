@@ -6,7 +6,7 @@ export const TYPES = ['food', 'place', 'product', 'event', 'info', 'other'];
 export const INTENTS = ['eat', 'visit', 'buy', 'experience', 'learn', 'reference', 'other'];
 
 const KEYWORDS = {
-  food: /\b(restaurants?|cafe|café|menu|ramen|noodles?|sushi|brunch|bakery|dessert|coffee|pizza|burgers?|buffet|michelin|hawker|kopitiam|dishes|dish|combo|omakase|bbq|steak|dim sum|bistro|eatery|cuisine|delicious|tasty|foodie|breakfast|dinner|lunch|spicy|bubble tea|ice cream)\b/gi,
+  food: /\b(restaurants?|cafe|café|menu|ramen|noodles?|sushi|brunch|bakery|dessert|coffee|pizza|burgers?|buffet|michelin|hawker|kopitiam|dishes|dish|combo|omakase|bbq|steak|dim sum|bistro|eatery|cuisine|delicious|tasty|foodie|breakfast|dinner|lunch|spicy|bubble tea|ice cream|steak|grill|pasta|seafood|tapas|izakaya|hotpot|kitchen|chicken rice|bar & grill)\b/gi,
   place: /\b(hike|hiking|trail|mountain|mt\.?|temple|beach|park|museum|island|itinerary|travel|things to do|scenic|waterfall|national park|best season|castle|resort|hotel|viewpoint|lookout|attraction|sightseeing|trek|summit|shrine|garden|onsen|visit)\b/gi,
   product: /\b(add to cart|buy now|sale|discount|\d+% off|free shipping|in stock|sold out|shipping|checkout|order now|limited stock|voucher|amazon|shopee|lazada|price|deal|bundle)\b/gi,
   event: /\b(concert|tickets?|festival|exhibition|workshop|class|tour|live|register|admission|rsvp|lineup|line-up|gig|screening|performance|pop-?up|expo|market day|event)\b/gi,
@@ -23,7 +23,7 @@ const WHY = {
   other: 'Saved for later',
 };
 
-const lines = (text) => text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+const lines = (text) => text.split(/\r?\n/).map((l) => l.replace(/^[*•·▪●○◦>]+\s*/, '').trim()).filter(Boolean);
 const count = (re, text) => (text.match(re) || []).length;
 
 export function classify(text) {
@@ -31,10 +31,15 @@ export function classify(text) {
   const ranked = Object.entries(scores).sort((a, b) => b[1] - a[1]);
   const [best, top] = ranked[0];
   const second = ranked[1][1];
-  if (top === 0) return { type: 'other', confidence: 0.2 };
+  if (top === 0) {
+    // No topic words, but an address plus opening hours still looks like somewhere to go.
+    if (ADDRESS_LINE.test(text) && HOURS.test(text)) return { type: 'place', confidence: 0.3 };
+    return { type: 'other', confidence: 0.2 };
+  }
   // Confidence grows with evidence and with how clearly the winner leads.
   const lead = (top - second) / top;
-  const confidence = Math.min(0.85, 0.35 + 0.1 * Math.min(top, 4) + 0.15 * lead);
+  const venueEvidence = ADDRESS_LINE.test(text) && HOURS.test(text) ? 0.15 : 0; // address + hours: a real venue
+  const confidence = Math.min(0.85, 0.35 + 0.1 * Math.min(top, 4) + 0.15 * lead + venueEvidence);
   return { type: best, confidence: Math.round(confidence * 100) / 100 };
 }
 
@@ -43,32 +48,66 @@ const NOISE = [
   /^https?:|www\.|\.com\b/i, /^[\d\s.,$¥€£%:/-]+$/, /^.{0,2}$/, /\b\d+[kKmM]?\s+(likes|comments|views|followers)\b/i,
 ];
 
+const CJK = '\\u3040-\\u30ff\\u3400-\\u9fff\\uac00-\\ud7af';
+const CAPITAL = new RegExp(`^[A-Z0-9${CJK}]`);
+
+// OCR run over icons or unsupported scripts yields tokens like "VjioSBRRRIZH+H".
+function looksGarbled(token) {
+  if (/[A-Za-z][^\w\s'.,&!?-]|[^\w\s'.,&!?-][A-Za-z]/.test(token)) return true; // letters glued to symbols
+  return (token.match(/[a-z](?=[A-Z])/g) || []).length >= 2; // several lower->UPPER flips
+}
+
+function readable(line) {
+  const tokens = line.split(/\s+/);
+  return tokens.filter(looksGarbled).length / tokens.length < 0.3;
+}
+
+const squash = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+
 function nameCandidates(text) {
-  return lines(text).slice(0, 15).filter((l) => !NOISE.some((re) => re.test(l)) && l.length <= 60);
+  return lines(text).slice(0, 20).filter((l) => !NOISE.some((re) => re.test(l)) && l.length <= 60 && readable(l));
 }
 
 export function guessName(text) {
+  // An Instagram-style handle (@steak_stop) is a strong hint for a line that spells the same name.
+  const handles = [...text.matchAll(/@([\w.]{3,})/g)].map((m) => squash(m[1]));
   const scored = nameCandidates(text).map((line, i) => {
     const words = line.split(/\s+/);
-    const capitalised = words.filter((w) => /^[A-Z0-9]/.test(w)).length / words.length;
+    const capitalised = words.filter((w) => CAPITAL.test(w)).length / words.length;
     let score = capitalised * 2 - i * 0.1;
     if (words.length <= 5) score += 1;
     if (/[.!?]$/.test(line) || words.length > 8) score -= 2;
+    if (words.length >= 3 && line === line.toUpperCase()) score -= 1.5; // shouty runs are usually noise
+    if (handles.includes(squash(line))) score += 5;
     return { line, score };
   });
   scored.sort((a, b) => b.score - a.score);
   return scored.length && scored[0].score > 0 ? scored[0].line : '';
 }
 
-const ADDRESS = /\b\d{1,4}[A-Za-z]?[ \t]+[A-Z][\w' ]{2,30}[ \t](Road|Rd|Street|St|Avenue|Ave|Lane|Drive|Dr|Boulevard|Blvd)\b[^\n]*/;
+const ROAD = '(?:Road|Rd|Street|St|Avenue|Ave|Lane|Ln|Drive|Dr|Boulevard|Blvd|Crescent|Walk|Way|Close|Jalan|Lorong)';
+const ADDRESS_LINE = new RegExp(`\\b\\d{1,4}[A-Za-z]?[ \\t]+[A-Z][\\w' ]{2,30}[ \\t]${ROAD}\\b|\\b(?:Singapore|S)[ \\t]?\\d{6}\\b`);
+const HOURS = /\bopen\b|24\s?\/\s?7|\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\s?[-–]/i;
 const VENUE = /\b([A-Z][\w']+(?:[ \t]+[A-Z][\w']+){0,3}[ \t](?:Towers?|Plaza|Mall|Centre|Center|Building|Market|Square|Hotel|Station|Island|Park|Hawker Centre|Food Centre|Quay|Walk|Point|City))\b/;
 const PREPOSITION = /\b(?:in|at|near)[ \t]+([A-Z][\w']+(?:[ \t]+[A-Z][\w']+){0,2})\b/;
+
+// A street address often wraps onto a second line ("..., Hotel Classic by Venue,\nSingapore 427353").
+function addressFrom(text) {
+  const all = lines(text);
+  const i = all.findIndex((l) => ADDRESS_LINE.test(l));
+  if (i < 0) return '';
+  let addr = all[i];
+  if (/[,&-]$/.test(addr) && all[i + 1] && all[i + 1].length < 60) addr += ` ${all[i + 1]}`;
+  return addr.replace(/,\s*$/, '');
+}
 
 export function guessLocation(text, name = '', type = 'other') {
   const n = name.toLowerCase();
   // A match that is just part of the name (e.g. "Fuji Fifth Station") isn't a location.
   const usable = (loc) => loc && !n.includes(loc.toLowerCase());
-  for (const re of [ADDRESS, VENUE, PREPOSITION]) {
+  const addr = addressFrom(text);
+  if (usable(addr)) return addr;
+  for (const re of [VENUE, PREPOSITION]) {
     const m = text.match(re);
     const loc = m && (m[1] || m[0]).trim();
     if (usable(loc)) return loc;

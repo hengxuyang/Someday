@@ -63,3 +63,30 @@ test('validateEdit rejects bad input', () => {
   assert.throws(() => validateEdit({ useful_details: 'a' }), { status: 400 });
   assert.deepEqual(validateEdit({ name: '  Foo ', useful_details: [' a ', ''] }), { name: 'Foo', useful_details: ['a'] });
 });
+
+import { readFileSync } from 'node:fs';
+
+test('real noisy Instagram OCR (garbled CJK + icons) still yields the venue', () => {
+  const r = extract(readFileSync(new URL('./fixtures/instagram-steak-stop.txt', import.meta.url), 'utf8'));
+  assert.equal(r.intent, 'eat');
+  assert.equal(r.name, 'Steak Stop');
+  assert.equal(r.location, '12 Joo Chiat Rd, 01-03 Hotel Classic by Venue, Singapore 427353');
+  assert.deepEqual(r.useful_details, ['12pm-3pm & 5pm-10pm']);
+  assert.ok(r.confidence >= 0.5);
+});
+
+test('garbled lines are never chosen as the name', () => {
+  const r = extract('BS VjioSBRRRIZH+H OBA RM!\nASRHSEmMExZers*®\nRamen Nagi\nOpen 11am-10pm');
+  assert.equal(r.name, 'Ramen Nagi');
+});
+
+test('CJK names are accepted', () => {
+  assert.equal(extract('客家人豆腐\n味道很好的餐厅\nmenu').name, '客家人豆腐');
+});
+
+test('address and hours alone suggest a place to visit, with low confidence', () => {
+  const r = extract('Some Spot\n5 Orchard Road\nOpen 10am-9pm');
+  assert.equal(r.type, 'place');
+  assert.ok(r.confidence < 0.5);
+  assert.equal(r.location, '5 Orchard Road');
+});

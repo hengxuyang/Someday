@@ -18,6 +18,10 @@ On macOS, install the Xcode command line tools (`xcode-select --install`). The f
 "OCR failed"; use **Re-run OCR** in the detail view once an engine is set up (this is also how to
 scan screenshots imported earlier).
 
+Vision reads English plus Simplified/Traditional Chinese, Japanese and Korean by default. For other
+languages set `SOMEDAY_OCR_LANGS` (e.g. `SOMEDAY_OCR_LANGS=en-US,th-TH npm start`). After changing OCR
+settings, use **Re-run OCR** on affected items. User edits are kept.
+
 ## Status
 
 Phase 1: import (button, multi-select, drag and drop), copy, display, duplicate detection, delete.
