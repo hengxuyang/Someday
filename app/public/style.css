@@ -22,3 +22,16 @@ dialog form { display:flex; gap:8px; justify-content:space-between; }
 #q { display:block; width:min(100%,420px); margin:16px auto 0; padding:10px 14px; font:inherit; border-radius:8px; border:1px solid var(--muted); background:var(--card); color:var(--fg); }
 dialog h2 { font-size:.85rem; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); margin:16px 0 4px; }
 #detail-text { white-space:pre-wrap; max-height:180px; overflow:auto; margin:0 0 8px; font:inherit; font-size:.9rem; }
+#chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:16px; }
+#chips button[aria-pressed=true] { background:var(--accent); border-color:var(--accent); color:#fff; }
+#chips small { opacity:.7; margin-left:4px; }
+#grid .card { text-align:left; }
+#grid .card .cap { padding:8px 10px 10px; font-size:.9rem; }
+#grid .card .cap b { display:block; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#grid .card .cap span { color:var(--muted); font-size:.8rem; }
+#edit { display:grid; gap:8px; margin-top:12px; }
+#edit label { display:grid; gap:2px; font-size:.8rem; color:var(--muted); }
+#edit input, #edit select, #edit textarea { font:inherit; font-size:1rem; padding:6px 8px; border-radius:6px; border:1px solid var(--muted); background:var(--bg); color:var(--fg); }
+#edit .row { display:flex; gap:8px; }
+#confidence { margin:0; font-size:.8rem; color:var(--muted); }
+#confidence.unsure { color:var(--accent); }
