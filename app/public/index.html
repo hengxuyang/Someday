@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Someday</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Someday</h1>
+    <p class="tagline">Things you've saved for later</p>
+    <button id="add" type="button">+ Add Screenshots</button>
+    <input id="file" type="file" accept="image/*" multiple hidden>
+    <p id="status" role="status"></p>
+  </header>
+  <main>
+    <p id="empty" hidden>Nothing here yet. Drop some screenshots anywhere to begin.</p>
+    <div id="grid"></div>
+  </main>
+  <div id="drop" hidden>Drop screenshots to add them</div>
+  <dialog id="detail">
+    <img id="detail-img" alt="">
+    <p id="detail-meta"></p>
+    <form method="dialog">
+      <button id="delete" type="button" class="danger">Delete from Someday</button>
+      <button>Close</button>
+    </form>
+    <p class="note">Only Someday's copy is deleted. Your original stays untouched.</p>
+  </dialog>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
