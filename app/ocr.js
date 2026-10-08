@@ -14,6 +14,51 @@ async function hasCommand(cmd) {
   return run('which', [cmd]).then(() => true, () => false);
 }
 
+const SDK_DIRS = [
+  '/Library/Developer/CommandLineTools/SDKs',
+  '/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs',
+];
+
+// SDKs to try, in order: an explicit override, the toolchain default (null), then every
+// installed macOS SDK newest-first. A beta/newer SDK than the compiler breaks the default build,
+// and an older installed SDK usually still works.
+export async function sdkCandidates(env = process.env, dirs = SDK_DIRS) {
+  const found = [];
+  for (const dir of dirs) {
+    for (const name of await fs.readdir(dir).catch(() => [])) {
+      if (/^MacOSX.*\.sdk$/.test(name)) found.push(path.join(dir, name));
+    }
+  }
+  const real = await Promise.all(found.map((f) => fs.realpath(f).catch(() => f)));
+  const unique = [...new Set(real)].sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  return [...(env.SOMEDAY_SDK ? [env.SOMEDAY_SDK] : []), null, ...unique];
+}
+
+// Boil a wall of compiler output down to the lines that explain the failure.
+export function summariseCompileError(stderr) {
+  const lines = String(stderr).split('\n').filter((l) => /error:/.test(l));
+  const mismatch = lines.find((l) => /SDK is not supported by the compiler/.test(l));
+  return (mismatch || lines.slice(0, 3).join('\n') || String(stderr)).replace(/^\S+?:\d+:\d+: /, '').trim().slice(0, 600);
+}
+
+async function compileVision() {
+  let firstError = '';
+  for (const sdk of await sdkCandidates()) {
+    try {
+      await run('swiftc', ['-O', ...(sdk ? ['-sdk', sdk] : []), SWIFT_SRC, '-o', SWIFT_BIN], { timeout: 300_000 });
+      return;
+    } catch (err) {
+      firstError ||= summariseCompileError(err.stderr || err.message);
+    }
+  }
+  throw new Error(
+    `Could not build the Apple Vision helper with any installed macOS SDK: ${firstError}\n` +
+    'Usually the Command Line Tools are out of sync. Update them in System Settings > Software Update, or reinstall: ' +
+    '"sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install". ' +
+    'To force a specific SDK, set SOMEDAY_SDK=/path/to/MacOSX.sdk.',
+  );
+}
+
 // Compile the Swift helper once; later runs use the binary and skip Swift's slow startup.
 async function visionBinary() {
   // Reuse the binary unless the Swift source changed since it was built.
@@ -21,14 +66,9 @@ async function visionBinary() {
   if (bin && bin.mtimeMs >= src.mtimeMs) return SWIFT_BIN;
   if (process.platform !== 'darwin' || !(await hasCommand('swiftc'))) return null;
   await fs.mkdir(path.dirname(SWIFT_BIN), { recursive: true });
-  try {
-    await run('swiftc', ['-O', SWIFT_SRC, '-o', SWIFT_BIN], { timeout: 300_000 });
-    return SWIFT_BIN;
-  } catch (err) {
-    // Don't quietly fall back to tesseract: it is Latin-only and gives much worse results.
-    const detail = String(err.stderr || err.message).trim().slice(0, 1200);
-    throw new Error(`Could not build the Apple Vision helper. Try "xcode-select --install". Details: ${detail}`);
-  }
+  // Don't quietly fall back to tesseract on failure: it is Latin-only and much worse.
+  await compileVision();
+  return SWIFT_BIN;
 }
 
 // Returns { text } on success, or throws if no OCR engine is available or it fails.
