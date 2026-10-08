@@ -10,17 +10,15 @@ const SWIFT_SRC = path.join(here, 'ocr', 'vision-ocr.swift');
 const SWIFT_BIN = path.join(here, 'ocr', '.build', 'vision-ocr');
 const OPTS = { timeout: 120_000, maxBuffer: 10 * 1024 * 1024 };
 
-async function exists(p) {
-  return fs.access(p).then(() => true, () => false);
-}
-
 async function hasCommand(cmd) {
   return run('which', [cmd]).then(() => true, () => false);
 }
 
 // Compile the Swift helper once; later runs use the binary and skip Swift's slow startup.
 async function visionBinary() {
-  if (await exists(SWIFT_BIN)) return SWIFT_BIN;
+  // Reuse the binary unless the Swift source changed since it was built.
+  const [src, bin] = await Promise.all([fs.stat(SWIFT_SRC), fs.stat(SWIFT_BIN).catch(() => null)]);
+  if (bin && bin.mtimeMs >= src.mtimeMs) return SWIFT_BIN;
   if (process.platform !== 'darwin' || !(await hasCommand('swiftc'))) return null;
   await fs.mkdir(path.dirname(SWIFT_BIN), { recursive: true });
   try {

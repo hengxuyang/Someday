@@ -19,7 +19,19 @@ guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
 let request = VNRecognizeTextRequest()
 request.recognitionLevel = .accurate
 request.usesLanguageCorrection = true
-if #available(macOS 13.0, *) { request.automaticallyDetectsLanguage = true }
+
+// Screenshots mix scripts (English captions over Chinese/Japanese/Korean text). With the default
+// Latin-only setting Vision turns CJK into gibberish, so ask for several languages explicitly.
+// Override with SOMEDAY_OCR_LANGS, e.g. "en-US,zh-Hans,th-TH". Earlier entries take priority.
+let wanted = (ProcessInfo.processInfo.environment["SOMEDAY_OCR_LANGS"] ?? "en-US,zh-Hans,zh-Hant,ja-JP,ko-KR")
+    .split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+let supported = (try? request.supportedRecognitionLanguages()) ?? []
+let languages = wanted.filter { supported.contains($0) }
+if !languages.isEmpty {
+    request.recognitionLanguages = languages
+} else if #available(macOS 13.0, *) {
+    request.automaticallyDetectsLanguage = true
+}
 
 do {
     try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
@@ -34,5 +46,6 @@ let observations = (request.results ?? []).sorted {
     return abs(dy) > 0.01 ? dy > 0 : $0.boundingBox.minX < $1.boundingBox.minX
 }
 for obs in observations {
-    if let top = obs.topCandidates(1).first { print(top.string) }
+    // Icons and decoration often "read" as low-confidence noise; drop it.
+    if let top = obs.topCandidates(1).first, top.confidence >= 0.3 { print(top.string) }
 }
