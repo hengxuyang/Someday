@@ -35,3 +35,9 @@ Phase 2: local OCR on import, stored text, search across OCR text and filename, 
 Phase 3: rule-based understanding (`app/extract.js`) fills in type, intent, name, location, why saved,
 useful details and a confidence score. Everything is editable in the detail view; edited fields are kept
 when an item is re-processed. Filter by intent with the chips under the search box.
+
+Phase 4: **Home** shows what you've saved by intent (no backlog counts), a few varied things to rediscover
+("Show me something else"; "Maybe later" hides one for 7 days) and what you saved recently.
+**Review** is a short, optional pass of up to 5 things at a time: Keep, Maybe or Done (keys K, M, D).
+Done things leave Home and discovery but stay in the Library and in search. Each detail view also has
+Keep / Maybe / Done buttons. Selection logic is in `app/curate.js`.

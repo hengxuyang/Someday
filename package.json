@@ -7,6 +7,6 @@
   "scripts": {
     "start": "node app/server.js",
     "ocr": "node app/ocr-cli.js",
-    "test": "node --test app/store.test.js app/search.test.js app/server.test.js app/extract.test.js app/ocr.test.js"
+    "test": "node --test app/store.test.js app/search.test.js app/server.test.js app/extract.test.js app/ocr.test.js app/curate.test.js"
   }
 }
