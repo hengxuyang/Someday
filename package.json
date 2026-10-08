@@ -1,0 +1,11 @@
+{
+  "name": "someday",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local screenshot inbox",
+  "type": "module",
+  "scripts": {
+    "start": "node app/server.js",
+    "test": "node --test app/store.test.js"
+  }
+}
