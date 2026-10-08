@@ -6,6 +6,7 @@ import { Store } from './store.js';
 import { ocrImage } from './ocr.js';
 import { search } from './search.js';
 import { analyse, validateEdit, whyFor } from './extract.js';
+import { applyReview, pickForDiscovery, reviewQueue } from './curate.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -74,7 +75,7 @@ export async function backfill(store) {
   }
 }
 
-export function createServer(store, { ocr = ocrImage } = {}) {
+export function createServer(store, { ocr = ocrImage, clock = () => new Date() } = {}) {
   return http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
@@ -97,6 +98,26 @@ export function createServer(store, { ocr = ocrImage } = {}) {
       if (redo && req.method === 'POST') {
         const item = (await store.list()).find((i) => i.id === redo[1]);
         return item ? json(res, 200, { item: await runOcr(store, item, ocr) }) : json(res, 404, { error: 'Not found' });
+      }
+
+      if (p === '/api/discover' && req.method === 'GET') {
+        const n = Math.min(Math.max(Number(url.searchParams.get('n')) || 3, 1), 6);
+        const exclude = new Set((url.searchParams.get('exclude') || '').split(',').filter(Boolean));
+        const items = (await store.list()).filter((i) => !exclude.has(i.id));
+        return json(res, 200, pickForDiscovery(items, n, clock()));
+      }
+
+      if (p === '/api/review/queue' && req.method === 'GET') {
+        const limit = Math.min(Math.max(Number(url.searchParams.get('limit')) || 5, 1), 20);
+        return json(res, 200, reviewQueue(await store.list(), limit, clock()));
+      }
+
+      const review = p.match(/^\/api\/items\/([a-f0-9]+)\/review$/);
+      if (review && req.method === 'POST') {
+        const { action } = JSON.parse((await readBody(req)).toString() || '{}');
+        const patch = applyReview(action, clock());
+        const item = await store.update(review[1], patch);
+        return item ? json(res, 200, { item }) : json(res, 404, { error: 'Not found' });
       }
 
       const one = p.match(/^\/api\/items\/([a-f0-9]+)$/);
